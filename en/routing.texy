@@ -1,38 +1,51 @@
-xURL Routing
+URL Routing
 ***********
 
 /--div .[perex]
-Routing is a two-way conversion between URL and presenters' actions. *Two-way* means that we can both determine what presenter URL links to, but also vice versa: generating URL for given action. This article contains:
+Routing is a two-way conversion between URL and presenter action. *Two-way* means that we can both determine what presenter URL links to, but also vice versa: generate URL for given action. This article contains:
 
 - how to define routes and create links
 - a few notes about SEO redirection
-- how are routes debugged
+- how to debug defined routes
 - how to create your own router
 \--
 
-Thanks to bidirectional routing you don't have to hardcode URLs into templates, but simply link to [presenters' actions|presenters#toc-handling-presenter-actions] and framework generates the url:
+
+
+What is Routing?
+================
+
+Routing is a **two-way conversion** between **URL** and an **application request**.
+
+- `Nette\Http\IRequest` (includes URL) -> `Nette\Application\Request`
+- `Nette\Application\Request` -> absolute URL
+
+
+Thanks to bidirectional routing you don't have to hardcode URLs into templates, but you simply link to [presenters' actions|presenters#toc-handling-presenter-actions] and framework generates the URLs for you:
 
 /--html
+{* creates URL to presenter 'Product' and action 'detail' *}
 <a n:href="Product:detail $productId">product detail</a>
 \--
 
-Learn more about [creating links |presenters#toc-creating-links].
+Learn more about [creating links |presenters#link-creation].
 
-Routing is a separate application layer. You may even create URLs the tiem a whole application is complete. It's also simple to change routes anytime, while keeping preserving original addresses and automatically redirecting to new variants. So hey, who's got that? :-)
+Routing is a **separate application layer**. This allow you to very efficiently manipulate with the URL structure without the need to modify the application itself. It's simple to change routes anytime, while keeping the original addresses preserved and automatically redirect to the new variants. So hey, who's got that? :-)
+
 
 
 SimpleRouter
 ============
 
-Desired URL format is set by so called *router*, which is usually defined in [bootstrap.php |presenters#index-php-bootstrap-php] file. The most plain implementation of router is [SimpleRouter | api:Nette\Application\Routers\SimpleRouter]. It is to be used when there's no need for a specific url format, or our server does not support `mod_rewrite`.
+Desired URL format is set by a *router*, which is usually defined in [bootstrap.php |presenters#index-php-bootstrap-php] file. The most plain implementation of router is [SimpleRouter | api:Nette\Application\Routers\SimpleRouter]. It can be used when there's no need for a specific URL format, or when `mod_rewrite` (or alternatives) is not available.
 
 Addresses look like this:
 
 /--
-http://example.com/index.php?presenter=product&action=detail&id=123
+http://example.com/index.php?presenter=Product&action=detail&id=123
 \--
 
-The first argument of SimpleRouter constructor is a default presenter action, ie. action to be executed if we open for example `http://example.com/` without additional params. The declaration itself in a `bootstrap.php` file might might look as follows: (`$container` is a [system DI container |configuring])
+The first argument of `SimpleRouter` constructor is a default presenter action, ie. action to be executed if we open for example `http://example.com/` without additional parameters. The declaration itself in a `bootstrap.php` file might look as follows: (`$container` is a [system DI container |configuring])
 
 /--php
 use Nette\Application\Routers\SimpleRouter;
@@ -45,54 +58,95 @@ $container->router = new SimpleRouter('Homepage:default');
 Route: for prettier URLs
 ========================
 
-More human URLs (though also more cool, prettier and user-friendly) are easier to remember and do help SEO (search engine optimalization). Nette Framework keeps current trends in mind and fully meets developers' desires.
+Human-friendly URLs (also more cool & prettier) are easier to remember and do help SEO((search engine optimalization)). Nette Framework keeps current trends in mind and fully meets developers' desires.
 
 .[note]
-Apache mode `mod_rewrite` is required and all request must be handled by `index.php` file, so the routes definition stays in one place. See [how to enable mod_rewrite |troubleshooting#how-to-enable-mod-rewrite].
+All requests must be handled by `index.php` file. This can be accomplished e.g. by using Apache module `mod_rewrite` (see [how to enable mod_rewrite |troubleshooting#how-to-enable-mod-rewrite]) or Nginx's try_files (available by default).
 
-Class [Route | api:Nette\Application\Routers\Route] can create addresses in pretty much any format one can though of. Let's start with an example generating a pretty URL for action `Product:default` with `id = 123`:
+Class [Route | api:Nette\Application\Routers\Route] can create addresses in pretty much any format one can though of. Let's start with a simple example generating a pretty URL for action `Product:default` with `id = 123`:
 
 /--
 http://example.com/product/detail/123
 \--
 
-The following snippet creates a `Route` object, passing path mask as a first argument and specifying default action as an array or a string with second argument.
+The following snippet creates a `Route` object, passing path mask as the first argument and specifying default action in the second argument.
 
 /--php
 // action defaults to presenter Homepage and action default
 $route = new Route('<presenter>/<action>[/<id>]', 'Homepage:default');
 \--
 
-This route is usable by for all presenters and actions. Accepts a path such as `/article/edit/10`, as well as `/catalog/list`, because the `id` part is wrapped in square brackets, which marks it optional.
+This route is usable by all presenters and actions. Accepts paths such as `/article/edit/10` or `/catalog/list`, because the `id` part is wrapped in square brackets, which marks it as [optional | #optional sequences].
 
-Because other parameters (`presenter` and `action`) do have default value (`Homepage` and `default`), they are optional too. If their value is same as the default one, they are skipped while URL is generated. Link to `Product:default` generates only `http://example.com/product` and `Homepage:default` links to `http://example.com/`.
+Because other parameters (`presenter` and `action`) do have default values (`Homepage` and `default`), they are optional too. If their value is the same as the default one, they are skipped while URL is generated. Link to `Product:default` generates only `http://example.com/product` and link to `Homepage:default` generates only `http://example.com/`.
 
-Mask can not only describe relative path to web root, but can as well tak absolute path (as long as it beging with a slash) or even absolute URL (if starts with double-slash):
+
+Path Mask
+---------
+
+The simplest path mask consists only of a **static URL** and a target presenter action.
 
 /--php
-$route = new Route('//<subdomain>.example.com/<presenter>/<action>', '...');
+$route = new Route('products', 'Products:default');
 \--
 
-Mask can contain traditional get arguments (query after a question mark). Neither regular expressions nor more complex structures are supported in this part of URL, but be can set what key belongs to which variable:
+Most real masks however contain some **parameters**. Parameters are enclosed in angle brackets (e.g. `<year>`) and are passed to target presenter.
+
+/--php
+$route = new Route('history/<year>', 'History:view');
+\--
+
+Mask can also contain traditional GET arguments (query after a question mark). Neither validation expressions nor more complex structures are supported in this part of path mask, but you can set what key belongs to which variable:
 
 /-- php
-$route = new Route('<presenter>/<action> ? id=<productId> & cat=<categoryId>',
-	'Homepage:default');
+$route = new Route('<presenter>/<action> ? id=<productId> & cat=<categoryId>', ...);
+\--
+
+.[note]
+The parameters before a question mark are called *path parameters* and the parameters after a question mark are called *query parameters*.
+
+
+/--comment
+TERMINOLOGY ISSUE:
+I've decided to use terminilogy by @Panda (http://edu.lynt.cz/course/download/?fileId=10). @DG uses "absolute path" for what I call here "relative to server document root" and "absolute URL" for what I call "absolute path". Any idea how to resolve this?
+\--
+
+Mask can not only describe path relative to application document root (web root), but can as well contain path relative to server document root (starts with a single slash) or absolute path with domain (starts with a double slash).
+
+/--php
+// relative to application document root (www directory)
+$route = new Route('<presenter>/<action>', ...);
+
+// relative to server document root
+$route = new Route('/<presenter>/<action>', ...);
+
+// absolute path including hostname
+$route = new Route('//<subdomain>.example.com/<presenter>/<action>', ...);
+\--
+
+Absolute path mask may utilize the following variables:
+- `%tld%` = top level domain, e.g. `com` or `org`
+- `%domain%` = second level domain, e.g. `example.com`
+- `%basePath%`
+
+/--php
+$route = new Route('//www.%domain%/%basePath%/<presenter>/<action>', ...);
 \--
 
 
-Route collection
+
+Route Collection
 ----------------
 
-Because we usually define more than one route, we wrap them into a [RouteList | api:Nette\Application\Routers\RouteList]. The following code snippet shows an [bootstrap.php |presenters#index-php-bootstrap-php] example: (`$container` is a [system DI container |configuring])
+Because we usually define more than one route, we wrap them into a [RouteList | api:Nette\Application\Routers\RouteList]. The following code snippet shows a [bootstrap.php |presenters#index-php-bootstrap-php] example (`$container` is a [system DI container |configuring]):
 
 /--php
 use Nette\Application\Routers\RouteList,
 	Nette\Application\Routers\Route;
 
-$router = new RouteList;
-$router[] = new Route('article/<id>', 'Article:view');
+$router = new RouteList();
 $router[] = new Route('rss.xml', 'Feed:rss');
+$router[] = new Route('article/<id>', 'Article:view');
 $router[] = new Route('<presenter>/<action>[/<id>]', 'Homepage:default');
 
 $container->addService('router', $router);
@@ -102,15 +156,17 @@ $container->addService('router', $router);
 .[note]
 Unlike other frameworks, Nette does not require routes to be named.
 
-It's importnat in which order routes are defined as they are tried from top to bottom. The rule of thumb here is that routes are declared from the most specific at the top to the most vague at the bottom. Keep in mind that huge amount of routes can negatively effect application speed, mostly when generating links. It's worth it to keep routes as simple as possible.
+It's importnat in which order routes are defined as they are tried from top to bottom. The rule of thumb here is that routes are declared from the **most specific at the top** to the **most vague at the bottom**. Keep in mind that huge amount of routes can negatively effect application speed, mostly when generating links. It's worth to keep routes as simple as possible.
 
 .[note]
-If no route is found, an [BadRequestException | api:Nette\Application\BadRequestException] is thrown, which is shown as 404 Not Found to the user.
+If no route is found, a [BadRequestException | api:Nette\Application\BadRequestException] is thrown, which is shown as 404 Not Found to the user.
 
-Default values
+
+
+Default Values
 --------------
 
-Each parameter may have defined default value in the mask:
+Each parameter may have defined a default value in the mask:
 
 /--php
 $route = new Route('<presenter=Homepage>/<action=default>/<id=>');
@@ -124,55 +180,90 @@ $route = new Route('<presenter>/<action>/<id>', array(
 	'action' => 'default',
 	'id' => NULL,
 ));
+
+// equals to the following complex notation
+$route = new Route('<presenter>/<action>/<id>', array(
+	'presenter' => array(
+		Route::VALUE => 'Homepage',
+	),
+	'action' => array(
+		Route::VALUE => 'default',
+	),
+	'id' => array(
+		Route::VALUE => NULL,
+	),
+));
 \--
 
-
-Validation expressions
-----------------------
-
-Regular expression conditions may be set for route parameters. For example let's set `id` to be only numerical, using `[0-9]+` regex:
+Default values for `<presenter>` and `<action>` can also be written as a string in the second constructor parameter.
 
 /--php
-$route = new Route('<presenter>/<action>[/<id [0-9]+>]',
-	'Homepage:default');
+$route = new Route('<presenter>/<action>/<id=>', 'Homepage:default');
 \--
 
+
+
+Validation Expressions
+----------------------
+
+Each parameter may have defined a **regular expression** which it needs to match. This regular expression is checked both when matching and generating URL. For example let's set `id` to be only numerical, using `\d+` regexp:
+
+/--php
+// regexp can be defined directly in the path mask after parameter name
+$route = new Route('<presenter>/<action>[/<id \d+>]', 'Homepage:default');
+
+// equals to the following complex notation
+$route = new Route('<presenter>/<action>[/<id>]', array(
+	'presenter' => 'Homepage',
+	'action' => 'default',
+	'id' => array(
+		Route::PATTERN => '\d+',
+	),
+));
+\--
+
+
 .[note]
-Default validation expression is `[^/]+`, that is all characters but a slash. If parameter is supposed to match those as well, we can set condition to `.+`.
+Default validation expression for path parameters is `[^/]+`, meaning all characters but a slash. If a parameter is supposed to match a slash as well, we can set the regular expression to `.+`.
+
+.[note]
+Regular expressions are *case-insensitive* by default. You need to set `Route::CASE_SENSITIVE` flag to make them *case-sensitive*.
 
 
-Optional sequences
+
+Optional Sequences
 ------------------
 
-Square brackets denote optional parts of mask. Any part of mask may be set optional, even with parameters:
+Square brackets denote optional parts of mask. Any part of mask may be set as optional, including those containing parameters:
 
 /--php
 $route = new Route('[<lang [a-z]{2}>/]<name>', 'Article:view');
 
-// Accepts:
-//    /en/download  => lang => en, name => download
-//    /download     => lang => NULL, name => download
+// Accepted URLs:      Parameters:
+//   /en/download        action => view, lang => en, name => download
+//   /download           action => view, lang => NULL, name => download
 \--
 
-Obviously, if parameter is inside an optional sequence, it's optional too and defaults to `NULL`. Sequence should define it's surroundings, in this case a slash which must follow an parameter, if set.
-The technique may be used with optional language subdomains:
+Obviously, if a parameter is inside an optional sequence, it's optional too and defaults to `NULL`. Sequence should define it's surroundings, in this case a slash which must follow a parameter, if set.
+The technique may be used for example for optional language subdomains:
 
 /--php
-$route = new Route('//[<lang=en>.]example.com/<presenter>/<action>',
-	'Homepage:default');
+$route = new Route('//[<lang=en>.]%domain%/<presenter>/<action>', ...);
 \--
 
 Sequences may be freely nested and combined:
 
 /--php
-$route = new Route('[<lang [a-z]{2}>[-<sublang>]/]<name>[/page-<page=0>]',
-	'Homepage:default');
+$route = new Route(
+	'[<lang [a-z]{2}>[-<sublang>]/]<name>[/page-<page=0>]',
+	'Homepage:default'
+);
 
-// Accepts:
-// 	/cs/hello
-// 	/en-us/hello
-// 	/hello
-// 	/hello/page-12
+// Accepted URLs:
+//   /cs/hello
+//   /en-us/hello
+//   /hello
+//   /hello/page-12
 \--
 
 
@@ -203,42 +294,52 @@ $route = new Route('[<presenter=Homepage>[/<action=default>[/<id>]]]');
 \--
 
 
-Foo parameters
--------------
+Flags
+-----
 
-Foo parameters are similar to optional sequences, but they are used to match a regular expression. The following route matches `/index`, `/index.html`, `/index.htm` and `/index.php`:
+`Route` default behavior can be altered by several flags which can be passed as the third constructor parameter.
 
-/--php
-$route = new Route('index<? \.html?|\.php|>', 'Homepage:default');
-\--
-
-It's also possible to explicitly define a string to be used while an address is generated (similar to setting default value to real parameters).
-
-
-ONE_WAY flag
-------------
-
-One way routes are usually used to preserve old URLs functionality, when an application is rewritten. Flag `ONE_WAY` marks routes, which are not used for url generation.
+**ONE_WAY flag** - One way routes are usually used to preserve old URLs functionality, when an application is rewritten. Flag `Route::ONE_WAY` marks routes, which are not used for URL generation.
 
 /--php
-// old URL /product-info?id=123
+// old URL /product-info?id=123, new URL /product/123
 $router[] = new Route('product-info', 'Product:detail', Route::ONE_WAY);
-// new URL /product/123
 $router[] = new Route('product/<id>', 'Product:detail');
 \--
 
-Additionally the user is redirected to new URL, so search engines won't index your pages twice (see [#SEO a kanonizace]).
-
-
-
-HTTPS
------
-
-Routes can be forced to secured HTTP by `SECURED` flag. That's useful for authentication pages, as well as administration etc. HTTPS must be supported by your hosting/server.
+**SECURED flag** - Routes can be forced to use HTTPS by `Route::SECURED` flag. That's useful for authentication pages, as well as administration etc. HTTPS must be supported by your hosting/server.
 
 /--php
-$route = new Route('admin/<presenter>/<action>',
-	'Admin:default', Route::SECURED);
+$route = new Route('admin/<presenter>/<action>', 'Admin:default',
+	Route::SECURED);
+\--
+
+
+/--comment
+	If you want to make route work with both HTTP and HTTPS you can write something like
+
+	/--php
+	// source https://github.com/nette/nette/pull/1196
+	$secured = $request->isSecured() ? Route::SECURED : 0;
+	$route = new Route('<presenter>/<action>', 'Homepage:default', $secured);
+	\--
+\--
+
+**CASE_SENSITIVE flag** - Routes are *case-insensitive* by default. Use `Route::CASE_SENSITIVE` to make a route *case-sensitive*.
+
+/--php
+// accepts all '/loRem', '/LOREM' and '/lorem'
+$route = new Route('<slug lorem>', 'Page:view');
+
+// accepts only '/lorem'
+$route = new Route('<slug lorem>', 'Page:view', Route::CASE_SENSITIVE);
+\--
+
+Flags can be freely combined using bitwise OR operator (`|`) and it is possible to set some flags as default for all routes using `Route::$defaultFlags` property.
+
+/--php
+// makes all routes case sensitive
+Route::$defaultFlags |= Route::CASE_SENSITIVE;
 \--
 
 
@@ -246,7 +347,7 @@ $route = new Route('admin/<presenter>/<action>',
 Transformation and Translation
 ------------------------------
 
-It's a good practice to write source code in english, but what if you need your application to run in a different environment? Simple routes such as:
+It's a good practice to write source code in English, but what if you need your application to run in a different environment? Simple routes such as:
 
 /--php
 $route = new Route('<presenter>/<action>/<id>', array(
@@ -256,63 +357,166 @@ $route = new Route('<presenter>/<action>/<id>', array(
 );
 \--
 
-will generate English URLs, `/product/123`, `/cart`, or `/catalog/view` etc. If we would like to translate those URLs, we can use a *dictionary*. We'd extend the route so:
+will generate English URLs, such as `/product/detail/123`, `/cart` or `/catalog/view`. If we would like to translate those URLs, we can use a *dictionary* defined under `Route::FILTER_TABLE` key. We'd extend the route so:
 
 /--php
 $route = new Route('<presenter>/<action>/<id>', array(
 	'presenter' => array(
-		Route::VALUE => 'Homepage',
+		Route::VALUE => 'Homepage', // default value
 		Route::FILTER_TABLE => array(
 			// translated string in URL => presenter
 			'produkt' => 'Product',
-			'kosik' => 'Cart',
+			'einkaufswagen' => 'Cart',
 			'katalog' => 'Catalog',
 		),
 	),
-	'action' => 'default',
+	'action' => array(
+		Route::VALUE => 'default',
+		Route::FILTER_TABLE => array(
+			'sehen' => 'view',
+		),
+	),
 	'id' => NULL,
 );
 \--
-
 
 .[tip]
-Multiple keys may link to same presenter. That's how aliases are created. The last value is the canonical one (used for link generation).
+Multiple keys may have the same value. That's how aliases are created. The last value is the canonical one (used for link generation).
 
-Dictionaries may be applied to any parameter. Although it does not work as a filter, if a translation is not found, default value is used.
+Dictionaries may be applied to any path parameter. If a translation is not found, the original (non-translated) value is used. The route by default accepts both translated (e.g. `/einkaufswagen`) and original (e.g. `/cart`) URLs. If you would like to accept only translated URLs, you need to add `Route::FILTER_STRICT => TRUE` to the route definition.
 
-Besides setting dictionaries as arrays, it's possible to set a callback or a filter:
 
-/--php
-$route = new Route('<presenter>/<action>/<id>', array(
-	'presenter' => array(
-		Route::VALUE => 'Homepage',
-		Route::FILTER_IN => 'filterInFunc',
-		Route::FILTER_OUT => 'filterOutFunc',
-	),
-	'action' => 'default',
-	'id' => NULL,
-);
-\--
-
-Where `filterInFunc` and `filterOutFunc` are functions or methods that converts values between URL and what presenter gets. Each handles one direction.
-
-Implicit *in-filter* is function [rawurldecode | php:rawurldecode] and *out-filter* is function [rawurlencode | php:rawurlencode], which escapes special characters (slashes, spaces, ...) for use in the URL.
-
-In certain situations this behavior may be changed, for example let us have a parameter `path`, that can also contain slashes, so they're not converted to `%2F`:
+Besides setting dictionaries as arrays, it's possible to set **input and output filters**. Input and output filter are callbacks defined under `Route::FILTER_IN` and `Route::FILTER_OUT` keys respectively.
 
 /--php
-// accepts http://files.example.com/path/to/my/file
-
-$route = new Route('//files.example.com/<path .+>', array(
-	'presenter' => 'File',
-	'action' => 'default',
-	'path' => array(
-		Route::VALUE => NULL,
-		Route::FILTER_IN => NULL,
-		Route::FILTER_OUT => NULL,
+$route = new Route('<presenter=Homepage>/<action=default>', array(
+	'action' => array(
+		Route::FILTER_IN => function($action) {
+			return strrev($action);
+		},
+		Route::FILTER_OUT => function($action) {
+			return strrev($action);
+		},
 	),
 ));
 \--
+
+The **input filter** accepts value from URL and should return a value which will be passed to a presenter. The **output filter** accepts value from presenter and should return a value which will be used in URL. If any of those filters is unable to filter the value (usually because it is invalid), it should return `NULL`.
+
+/--comment
+	Because input and output filters are more powerful concept than dictionary filtering, the previous example with `Route::FILTER_TABLE` can be rewritten as follows:
+
+	/--php
+	$filterTable = array(
+		'produkt' => 'Product',
+		'einkaufswagen' => 'Cart',
+		'katalog' => 'Catalog',
+	);
+
+	$route = new Route('<presenter>/<action>/<id>', array(
+		'presenter' => array(
+			Route::VALUE => 'Homepage',
+			Route::FILTER_IN => function($presenter) use ($filterTable) {
+				if (isset($filterTable[$presenter])) {
+					return $filterTable[$presenter];
+				} else {
+					return $presenter;
+				}
+			},
+			Route::FILTER_OUT => function($presenter) use ($filterTable) {
+				return array_search($presenter, $filterTable) ?: $presenter;
+			},
+		),
+		'action' => array(
+			Route::VALUE => 'default',
+			Route::FILTER_IN => function($action) {
+				if ($action === 'sehen') $action = 'view';
+				return $action;
+			},
+			Route::FILTER_OUT => function($action) {
+				if ($action === 'view') $action = 'sehen';
+				return $action;
+			},
+		),
+		'id' => NULL,
+	);
+	\--
+\--
+
+Besides filters for specific parameters, you can also define **global filters** which accepts an associative array with all parameters and returns an array with filtered parameters. Global filters are defined under `NULL` key.
+
+/--php
+$route = new Route('<presenter>/<action>', array(
+	'presenter' => 'Homepage',
+	'action' => 'default',
+	NULL => array(
+		Route::FILTER_IN => function(array $params) {
+			// ...
+			return $params;
+		},
+		Route::FILTER_OUT => function(array $params) {
+			// ...
+			return $params;
+		},
+	),
+);
+\--
+
+
+
+Foo Parameters
+--------------
+
+Foo parameters are basically unnamed parameters which allow you to match a regular expression. The following route matches `/index`, `/index.html`, `/index.htm` and `/index.php`:
+
+/--php
+$route = new Route('index<? \.html?|\.php|>', 'Homepage:default');
+\--
+
+It's also possible to explicitly define a string which will be used for URL generation (similar to setting default value for real parameters). The string must be placed directly after the question mark. The following route is similar to the previous one, but generates `/index.html` instead of `/index`, because the string `.html` is set as a "default value".
+
+/--php
+$route = new Route('index<?.html \.html?|\.php|>', 'Homepage:default');
+\--
+
+
+
+Styles
+------
+
+Default configuration for each parameter is taken from its style. Styles for path parameters are named after them (e.g. `id`), styles for query parameters are prefixed with a question mark (e.g. `?id`). If such style does not exist, the default one is used. The one for path parameters is called `#` and the one for query parameters is called `?#`. Parameters can also specify explicitly its style in the path mask after a hash sign (e.g. `<id#customStyle>`).
+
+To define a new style call `Route::addStyle($name, $parentStyle)` method. The parent style parameter is used to define a style which the new style will be based on. To configure existing style call `Route::setStyleProperty($style, $key, $value)`.
+
+
+For example let's define that all `<id>` path parameters in all routes must be numeric.
+
+/--php
+// define a new style, based on # = default for path parameters
+Route::addStyle('id', '#');
+
+// change validation expression
+Route::setStyleProperty('id', Route::PATTERN, '\d+');
+
+// in the following route the <id> must be numeric
+$route = new Route('<presenter>/<action>[/<id>]', ...);
+\--
+
+.[note]
+Styles must be defined before the route using them is created.
+
+You can also define general styles (not for specific parameter), they just need to start with a hash sign (`#`).
+
+/--php
+Route::addStyle('#numeric', '#');
+Route::setStyleProperty('#numeric', Route::PATTERN, '\d+');
+
+// in the following route the <id> will use the #numeric style
+$route = new Route('<presenter>/<action>[/<id#numeric>]', ...);
+\--
+
+.[tip]
+Have a quick look at the [default styles | api:Nette\Application\Routers\Route::$styles].
 
 
 
@@ -325,17 +529,18 @@ We should keep it no secret that routes may seem to be magical for a while. But 
 
 
 
-SEO and canonization
+SEO and Canonization
 ====================
 
 Framework increases SEO (search engine optimalization) as it prevents multiple URLs to link to different content (without a proper redirect). If more than one addresses link to same target (`/index` and `/index.html`), framework choses the first (makes it canonical) and redirect other to it with HTTP code 301. Thanks to that your page won't have duplicities on search engines and their rank won't be split.
 
-This whole process is the so called canonication. Default (canonical) url is the one router generaets, that is first route in collection without `ONE_WAY` flag.
+This whole process is the so called canonication. Default (canonical) URL is the one router generaets, that is first route in collection without `ONE_WAY` flag.
 
 Canonization is done by [Presenter | api:Nette\Application\UI\Presenter] and it's switched on by default. You may disable it by setting `$presenter->autoCanonicalize = FALSE`.
 
 .[note]
 Ajax and POST requests are not redirected as user would suffer either a data loss, or it would yell no additional SEO value.
+
 
 
 Modularity
@@ -370,23 +575,31 @@ $container->addService('router', function() {
 \--
 
 
-Custom router
+Custom Router
 =============
 
-If these offered routes do not fit your needs, you may create your own router and add it to your *router collection*. Router is nothing more but an implementation of [IRouter | api:Nette\Application\IRouter] with it's two methods:
+If these offered routes do not fit your needs, you may create your own router and add it to your *router collection*. Router is nothing more than an implementation of [IRouter | api:Nette\Application\IRouter] with it's two methods:
 
-/-- php
+/--php
 class MyRouter implements Nette\Application\IRouter
 {
-	function match(Nette\Http\IRequest $httpRequest){ }
+	function match(Nette\Http\IRequest $httpRequest)
+	{
+		// ...
+	}
 
-	function constructUrl(Nette\Application\Request $appRequest, Nette\Http\Url $refUrl) { }
+	function constructUrl(
+		Nette\Application\Request $appRequest,
+		Nette\Http\Url $refUrl
+	) {
+		// ...
+	}
 }
 \--
 
-Method `match` does process current [$httpRequest | api:Nette\Http\Request] (which offers more than just the URL) into internal [Nette\Application\Request | api:Nette\Application\Request] which contains presenter name and it's parameters. If original request could not be processed, return NULL.
+Method `match` does process current [$httpRequest | api:Nette\Http\Request] (which offers more than just the URL) into internal [Nette\Application\Request | api:Nette\Application\Request] which contains presenter name and it's parameters. If the original request could not be processed, it should return `NULL`.
 
-Method `constructUrl` generates absolute URL from internal request, possibly utilizing information from `$refUrl` argument.
+Method `constructUrl` generates absolute URL from application request, possibly utilizing information from `$refUrl` argument.
 
 Possibilities of custom routers are unlimited, for example it's possible to implement a router based on database records.
 
